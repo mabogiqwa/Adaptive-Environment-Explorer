@@ -1,0 +1,55 @@
+#gameBoard {
+    width: 500px;
+    height: 500px;
+    border: 2px solid black;
+    position: relative;
+    background-color: #f0f0f0;
+}
+.agent {
+    width: 20px;
+    height: 20px;
+    background-color: yellow;
+    position: absolute;
+    border-radius: 50%;
+    z-index: 10;
+}
+.obstacle {
+    background-color: red;
+    position: absolute;
+    z-index: 1;
+}
+.reward {
+    width: 15px;
+    height: 15px;
+    background-color: green;
+    position: absolute;
+    border-radius: 50%;
+    z-index: 2;
+}
+.bonus-reward {
+    width: 15px;
+    height: 15px;
+    background-color: blue;
+    position: absolute;
+    border-radius: 50%;
+    z-index: 3;
+}
+.exploration-bonus {
+    width: 20px;
+    height: 20px;
+    background-color: purple;
+    position: absolute;
+    border-radius: 5px;
+    z-index: 4;
+    opacity: 0.5;
+}
+#heatmap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 500px;
+    height: 500px;
+    z-index: 0;
+    opacity: 0.2;
+    pointer-events: none;
+}
