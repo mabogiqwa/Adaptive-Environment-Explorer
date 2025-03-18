@@ -271,7 +271,7 @@ class LearningAgent {
         this.size = 20;
         this.score = 0;
         this.rewardsCollected = 0;
-        this.learningRate = 0.1;
+        this.learningRate = 0.01;
         this.qTable = {};
         this.element = this.createAgentElement();
         this.explorationTimer = 0;
@@ -287,6 +287,9 @@ class LearningAgent {
         this.minEpsilon = 0.05;
         this.epsilonDecay = 0.9995;
 
+        this.positionHistory = [];
+        this.lastCentroidCheck = 0;
+
         // UI Elements
         this.scoreDisplay = document.getElementById('scoreDisplay');
         this.rewardsDisplay = document.getElementById('rewardsDisplay');
@@ -298,6 +301,36 @@ class LearningAgent {
         agent.classList.add('agent');
         this.gameBoard.appendChild(agent);
         return agent;
+    }
+
+    // Add this method to LearningAgent
+    checkPositionBias() {
+        // Only check every 1000 steps
+        if (this.explorationTimer - this.lastCentroidCheck < 1000) return;
+        
+        this.lastCentroidCheck = this.explorationTimer;
+        this.positionHistory.push({x: this.x, y: this.y});
+        
+        // Keep history manageable
+        if (this.positionHistory.length > 1000) {
+            this.positionHistory.shift();
+        }
+        
+        // Calculate centroid of recent positions
+        const centroidX = this.positionHistory.reduce((sum, pos) => sum + pos.x, 0) / 
+            this.positionHistory.length;
+        
+        // If centroid is biased to the right, increase probability of going left
+        const centerX = this.environment.width / 2;
+        const bias = (centroidX - centerX) / centerX; // Positive means right bias
+        
+        if (bias > 0.2) {
+            console.log("Correcting right-side bias: " + bias.toFixed(2));
+            // Apply correction in the next move decision
+            this.rightBiasCorrection = 0.3;
+        } else {
+            this.rightBiasCorrection = 0;
+        }
     }
 
     move() {
@@ -315,6 +348,8 @@ class LearningAgent {
             { name: 'right', dx: 20, dy: 0 }
         ];
 
+        this.checkPositionBias();
+
         // Calculate novelty bonus for each cell
         const actionWithNovelty = possibleActions.map(action => {
             const newX = this.x + action.dx;
@@ -325,9 +360,20 @@ class LearningAgent {
             
             // Calculate novelty bonus (inverse of visit count)
             const visitCount = this.environment.visitedCells[cellKey] || 0;
+            
+            // Enhanced novelty bonus for areas with fewer visits
             const noveltyBonus = 1 / (visitCount + 1);
             
-            return { ...action, noveltyBonus };
+            // Add position correction to counteract any bias
+            const centerX = this.environment.width / 2;
+            const positionFactor = this.x > centerX ? 
+                1.2 + (this.x / this.environment.width) : // Extra bonus for going left when on right side
+                1.0;
+            
+            return { 
+                ...action, 
+                noveltyBonus: noveltyBonus * positionFactor
+            };
         });
 
         // Epsilon-greedy action selection with novelty bonus
@@ -420,23 +466,38 @@ class LearningAgent {
     }
 
     getBestAction(possibleActions) {
-        // Simple action selection based on least collision risk
-        return possibleActions.reduce((bestAction, action) => {
-            const proposedX = this.x + action.dx;
-            const proposedY = this.y + action.dy;
-
+        // Add bias correction based on position
+        const centerX = this.environment.width / 2;
+        const biasCorrection = this.x > centerX ? -0.1 : 0.1; // Subtle correction
+        
+        return possibleActions.reduce((bestAction, currentAction) => {
+            const proposedX = this.x + currentAction.dx;
+            const proposedY = this.y + currentAction.dy;
+    
             // Create a temporary agent to check collisions
             const tempAgent = {
                 x: proposedX,
                 y: proposedY,
                 size: this.size
             };
-
+    
             const { obstacleCollision } = this.environment.checkCollisions(tempAgent);
             
-            // Prefer actions with no collision
-            return obstacleCollision ? bestAction : action;
-        }, possibleActions[0]);
+            // Calculate positional value
+            let actionValue = obstacleCollision ? -1 : 0;
+            
+            // Add position correction (slightly favor left when on right side and vice versa)
+            if (currentAction.name === 'left' && this.x > centerX) {
+                actionValue += biasCorrection;
+            } else if (currentAction.name === 'right' && this.x < centerX) {
+                actionValue -= biasCorrection;
+            }
+            
+            // Return the better action
+            return actionValue > bestAction.value ? 
+                {...currentAction, value: actionValue} : 
+                bestAction;
+        }, {...possibleActions[0], value: -2});
     }
     
     updateExplorationRate() {
@@ -449,6 +510,13 @@ class LearningAgent {
             this.stalledTime = 0;
             // Gradually decrease exploration rate over time
             this.epsilon = Math.max(this.epsilon * this.epsilonDecay, this.minEpsilon);
+        }
+        
+        // Add position-based exploration adjustment
+        const centerX = this.environment.width / 2;
+        if (this.x > centerX * 1.5) {
+            // If agent is far right, increase exploration
+            this.epsilon = Math.min(this.epsilon * 1.05, 0.9);
         }
         
         this.updateExplorationDisplay();
